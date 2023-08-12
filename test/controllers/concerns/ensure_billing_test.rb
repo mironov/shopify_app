@@ -12,6 +12,16 @@ class EnsureBillingTest < ActionController::TestCase
     def index
       render(html: "<h1>Success</ h1>")
     end
+
+    private
+
+    def current_shop_billing
+      ShopifyApp::BillingConfiguration.new(
+        charge_name: TEST_CHARGE_NAME,
+        amount: 5,
+        interval: ShopifyApp::BillingConfiguration::INTERVAL_EVERY_30_DAYS,
+      )
+    end
   end
 
   tests BillingTestController
@@ -90,6 +100,40 @@ class EnsureBillingTest < ActionController::TestCase
       amount: 5,
       interval: ShopifyApp::BillingConfiguration::INTERVAL_EVERY_30_DAYS,
     )
+    stub_graphql_requests(
+      { request_body: /activeSubscriptions/, response_body: EMPTY_SUBSCRIPTIONS },
+      {
+        request_body: hash_including({
+          query: /appSubscriptionCreate/,
+          variables: hash_including({
+            name: TEST_CHARGE_NAME,
+            lineItems: {
+              plan: {
+                appRecurringPricingDetails: hash_including({
+                  interval: ShopifyApp::BillingConfiguration::INTERVAL_EVERY_30_DAYS,
+                }),
+              },
+            },
+          }),
+        }),
+        response_body: PURCHASE_SUBSCRIPTION_RESPONSE,
+      },
+    )
+
+    get :index
+
+    assert_client_side_redirection "https://totally-real-url"
+
+    get :index, xhr: true
+
+    assert_response :unauthorized
+    assert_match "1", response.headers["X-Shopify-API-Request-Failure-Reauthorize"]
+    assert_match(%r{^https://totally-real-url}, response.headers["X-Shopify-API-Request-Failure-Reauthorize-Url"])
+  end
+
+  test "requires delegated to shop subscription if none exists and recurring" do
+    ShopifyApp.configuration.billing = :delegate_to_shop
+
     stub_graphql_requests(
       { request_body: /activeSubscriptions/, response_body: EMPTY_SUBSCRIPTIONS },
       {

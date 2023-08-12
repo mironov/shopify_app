@@ -63,7 +63,7 @@ module ShopifyApp
       subscriptions = response.body["data"]["currentAppInstallation"]["activeSubscriptions"]
 
       subscriptions.each do |subscription|
-        if subscription["name"] == ShopifyApp.configuration.billing.charge_name &&
+        if subscription["name"] == billing.charge_name &&
             (!Rails.env.production? || !subscription["test"])
 
           return true
@@ -75,7 +75,6 @@ module ShopifyApp
 
     def has_one_time_payment?(session)
       ShopifyApp::Logger.debug("Checking if has one time payment")
-      purchases = nil
       end_cursor = nil
 
       loop do
@@ -85,7 +84,7 @@ module ShopifyApp
         purchases["edges"].each do |purchase|
           node = purchase["node"]
 
-          if node["name"] == ShopifyApp.configuration.billing.charge_name &&
+          if node["name"] == billing.charge_name &&
               (!Rails.env.production? || !node["test"]) &&
               node["status"] == "ACTIVE"
 
@@ -123,20 +122,20 @@ module ShopifyApp
         session: session,
         query: RECURRING_PURCHASE_MUTATION,
         variables: {
-          name: ShopifyApp.configuration.billing.charge_name,
+          name: billing.charge_name,
           lineItems: {
             plan: {
               appRecurringPricingDetails: {
-                interval: ShopifyApp.configuration.billing.interval,
+                interval: billing.interval,
                 price: {
-                  amount: ShopifyApp.configuration.billing.amount,
-                  currencyCode: ShopifyApp.configuration.billing.currency_code,
+                  amount: billing.amount,
+                  currencyCode: billing.currency_code,
                 },
               },
             },
           },
           returnUrl: return_url,
-          test: ShopifyApp.configuration.billing.test,
+          test: billing.test,
         },
       )
 
@@ -148,13 +147,13 @@ module ShopifyApp
         session: session,
         query: ONE_TIME_PURCHASE_MUTATION,
         variables: {
-          name: ShopifyApp.configuration.billing.charge_name,
+          name: billing.charge_name,
           price: {
-            amount: ShopifyApp.configuration.billing.amount,
-            currencyCode: ShopifyApp.configuration.billing.currency_code,
+            amount: billing.amount,
+            currencyCode: billing.currency_code,
           },
           returnUrl: return_url,
-          test: ShopifyApp.configuration.billing.test,
+          test: billing.test,
         },
       )
 
@@ -162,7 +161,7 @@ module ShopifyApp
     end
 
     def recurring?
-      RECURRING_INTERVALS.include?(ShopifyApp.configuration.billing.interval)
+      RECURRING_INTERVALS.include?(billing.interval)
     end
 
     def run_query(session:, query:, variables: nil)
@@ -174,6 +173,14 @@ module ShopifyApp
       raise BillingError.new("Error while billing the store", response.body["errors"]) if response.body["errors"]
 
       response
+    end
+
+    def billing
+      if ShopifyApp.configuration.billing == :delegate_to_shop
+        current_shop_billing
+      else
+        ShopifyApp.configuration.billing
+      end
     end
 
     RECURRING_PURCHASES_QUERY = <<~QUERY

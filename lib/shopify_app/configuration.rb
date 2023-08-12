@@ -41,7 +41,7 @@ module ShopifyApp
     # allow namespacing webhook jobs
     attr_accessor :webhook_jobs_namespace
 
-    # takes a ShopifyApp::BillingConfiguration object
+    # takes a ShopifyApp::BillingConfiguration object or :delegate_to_shop
     attr_accessor :billing
 
     def initialize
